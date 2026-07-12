@@ -9,7 +9,7 @@ import (
 
 // StartWebRTC initializes the WebRTC connection and sets up callbacks.
 // Pass isInitiator=true if this peer is sending the Offer.
-func (p *p2pManager) StartWebRTC(isSender bool) error {
+func (p *P2pManager) StartWebRTC(isSender bool) error {
 	// check that we're connected to the signaling server
 	p.mu.RLock()
 	wc := p.WC
@@ -103,7 +103,7 @@ func (p *p2pManager) StartWebRTC(isSender bool) error {
 	return nil
 }
 
-func (p *p2pManager) HandleICECandidate(candidateBytes []byte) error {
+func (p *P2pManager) HandleICECandidate(candidateBytes []byte) error {
 	p.mu.RLock()
 	pc := p.PC
 	p.mu.RUnlock()
@@ -125,7 +125,7 @@ func (p *p2pManager) HandleICECandidate(candidateBytes []byte) error {
 	return nil
 }
 
-func (p *p2pManager) SendOffer(target string) error {
+func (p *P2pManager) SendOffer(target string) error {
 	p.mu.RLock()
 	pc := p.PC
 	p.mu.RUnlock()
@@ -153,7 +153,7 @@ func (p *p2pManager) SendOffer(target string) error {
 	return nil
 }
 
-func (p *p2pManager) HandleOffer(sender, remoteSDP string) error {
+func (p *P2pManager) HandleOffer(sender, remoteSDP string) error {
 	p.mu.RLock()
 	pc := p.PC
 	p.mu.RUnlock()
@@ -185,7 +185,7 @@ func (p *p2pManager) HandleOffer(sender, remoteSDP string) error {
 	return nil
 }
 
-func (p *p2pManager) HandleAnswer(remoteSDP string) error {
+func (p *P2pManager) HandleAnswer(remoteSDP string) error {
 	p.mu.RLock()
 	pc := p.PC
 	p.mu.RUnlock()
@@ -204,7 +204,7 @@ func (p *p2pManager) HandleAnswer(remoteSDP string) error {
 	return nil
 }
 
-func (p *p2pManager) SafeWriteBytesToDC(data []byte) error {
+func (p *P2pManager) SafeWriteBytesToDC(data []byte) error {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
@@ -215,7 +215,7 @@ func (p *p2pManager) SafeWriteBytesToDC(data []byte) error {
 	return p.DC.Send(data)
 }
 
-func (p *p2pManager) DisconnectWebRTC() {
+func (p *P2pManager) DisconnectWebRTC() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 

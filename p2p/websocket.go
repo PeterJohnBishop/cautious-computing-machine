@@ -19,7 +19,7 @@ type EventMessage struct {
 }
 
 // ConnectToSignallingServer used to facilitate the WebRTC handshake.
-func (p *p2pManager) ConnectToSignallingServer() error {
+func (p *P2pManager) ConnectToSignallingServer() error {
 	host := os.Getenv("HOST")
 	if host == "" {
 		host = "localhost:8080"
@@ -39,7 +39,7 @@ func (p *p2pManager) ConnectToSignallingServer() error {
 }
 
 // StartListening continuously reads messages from the WebSocket connection and sends them to the MessageChan. If an error occurs while reading, it sends the error to the ErrorChan and exits.
-func (p *p2pManager) StartListening() {
+func (p *P2pManager) StartListening() {
 	defer close(p.MessageChan)
 
 	for {
@@ -59,7 +59,7 @@ func (p *p2pManager) StartListening() {
 }
 
 // SendEventMessage sends an event message with the specified type, content, target, and optional raw data over the WebSocket connection. If an error occurs while sending, it sends the error to the ErrorChan.
-func (p *p2pManager) SendEventMessage(eventType string, msgContent string, target *string, rawData ...json.RawMessage) {
+func (p *P2pManager) SendEventMessage(eventType string, msgContent string, target *string, rawData ...json.RawMessage) {
 	var targetVal string
 	if target != nil {
 		targetVal = *target

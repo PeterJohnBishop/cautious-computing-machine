@@ -8,7 +8,7 @@ import (
 	"github.com/pion/webrtc/v4"
 )
 
-type p2pManager struct {
+type P2pManager struct {
 	mu          sync.RWMutex
 	WC          *websocket.Conn
 	PC          *webrtc.PeerConnection
@@ -21,7 +21,7 @@ type p2pManager struct {
 	ActivePeer  string
 }
 
-func (p *p2pManager) sendStatus(msg string) {
+func (p *P2pManager) sendStatus(msg string) {
 	if p.StatusChan != nil {
 		select {
 		case p.StatusChan <- msg:
