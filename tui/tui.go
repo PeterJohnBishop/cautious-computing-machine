@@ -160,6 +160,7 @@ func (m *Model) cmdConnectWS() tea.Cmd {
 		if err != nil {
 			return errMsg{err: fmt.Errorf("failed to connect to the signaling server: %w", err)}
 		}
+		go m.p2p.StartListening()
 		return wsConnectedMsg{}
 	}
 }
