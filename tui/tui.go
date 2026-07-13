@@ -161,14 +161,20 @@ func (m *Model) cmdConnectWS() tea.Cmd {
 		if err != nil {
 			return errMsg{err: fmt.Errorf("failed to connect to the signaling server: %w", err)}
 		}
+
+		// 1. THE FIX: Introduce ourselves to the server so we get added to the routing map!
+		m.p2p.SendEventMessage("connect", "Device registering", nil)
+
+		// 2. Start listening for incoming messages
 		go m.p2p.StartListening()
 
+		// 3. Keep the DigitalOcean tunnel alive
 		go func() {
 			ticker := time.NewTicker(30 * time.Second)
 			defer ticker.Stop()
 			for range ticker.C {
 				if err := m.p2p.SendPing(); err != nil {
-					return
+					return // Connection closed, kill the ping loop
 				}
 			}
 		}()
