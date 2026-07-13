@@ -200,7 +200,7 @@ func cmdSendOffer(p *p2p.P2pManager, targetID string) tea.Cmd {
 	}
 }
 
-func cmdHandleOffer(p *p2p.P2pManager, sender, remoteSDP string) tea.Cmd {
+func cmdHandleOffer(p *p2p.P2pManager, sender string, remoteSDP []byte) tea.Cmd {
 	return func() tea.Msg {
 		if err := p.HandleOffer(sender, remoteSDP); err != nil {
 			return errMsg{err: fmt.Errorf("failed to handle offer: %w", err)}
@@ -209,7 +209,7 @@ func cmdHandleOffer(p *p2p.P2pManager, sender, remoteSDP string) tea.Cmd {
 	}
 }
 
-func cmdHandleAnswer(p *p2p.P2pManager, remoteSDP string) tea.Cmd {
+func cmdHandleAnswer(p *p2p.P2pManager, remoteSDP []byte) tea.Cmd {
 	return func() tea.Msg {
 		if err := p.HandleAnswer(remoteSDP); err != nil {
 			return errMsg{err: fmt.Errorf("failed to handle answer: %w", err)}

@@ -8,7 +8,6 @@ import (
 )
 
 func (p *P2pManager) StartWebRTC(isSender bool) error {
-	// check that we're connected to the signaling server
 	p.mu.RLock()
 	wc := p.WC
 	p.mu.RUnlock()
@@ -29,6 +28,7 @@ func (p *P2pManager) StartWebRTC(isSender bool) error {
 	p.mu.Lock()
 	p.PC = pc
 	p.mu.Unlock()
+
 	if isSender {
 		dc, err := pc.CreateDataChannel("dataTransfer", nil)
 		if err != nil {
@@ -45,7 +45,7 @@ func (p *P2pManager) StartWebRTC(isSender bool) error {
 
 		dc.OnMessage(func(msg webrtc.DataChannelMessage) {
 			if p.DataChan != nil {
-				// handle msg
+				p.DataChan <- msg.Data
 			}
 		})
 	} else {
@@ -60,7 +60,8 @@ func (p *P2pManager) StartWebRTC(isSender bool) error {
 
 			d.OnMessage(func(msg webrtc.DataChannelMessage) {
 				if p.DataChan != nil {
-					// handle msg
+					// Push incoming data to the TUI receiver loop
+					p.DataChan <- msg.Data
 				}
 			})
 		})
@@ -147,7 +148,7 @@ func (p *P2pManager) SendOffer(target string) error {
 	return nil
 }
 
-func (p *P2pManager) HandleOffer(sender, remoteSDP string) error {
+func (p *P2pManager) HandleOffer(sender string, offerBytes []byte) error {
 	p.mu.RLock()
 	pc := p.PC
 	p.mu.RUnlock()
@@ -156,7 +157,11 @@ func (p *P2pManager) HandleOffer(sender, remoteSDP string) error {
 		return fmt.Errorf("peer connection must be initialized")
 	}
 
-	offer := webrtc.SessionDescription{Type: webrtc.SDPTypeOffer, SDP: remoteSDP}
+	var offer webrtc.SessionDescription
+	if err := json.Unmarshal(offerBytes, &offer); err != nil {
+		return fmt.Errorf("failed to unmarshal remote offer: %w", err)
+	}
+
 	if err := pc.SetRemoteDescription(offer); err != nil {
 		return fmt.Errorf("failed to set the session description: %w", err)
 	}
@@ -174,12 +179,13 @@ func (p *P2pManager) HandleOffer(sender, remoteSDP string) error {
 	if err != nil {
 		return fmt.Errorf("failed to marshal answer: %w", err)
 	}
+
 	p.SendEventMessage("answer", "WebRTC Answer", &sender, answerBytes)
 	p.sendStatus("offer accepted. outbound answer sent.")
 	return nil
 }
 
-func (p *P2pManager) HandleAnswer(remoteSDP string) error {
+func (p *P2pManager) HandleAnswer(answerBytes []byte) error {
 	p.mu.RLock()
 	pc := p.PC
 	p.mu.RUnlock()
@@ -188,7 +194,10 @@ func (p *P2pManager) HandleAnswer(remoteSDP string) error {
 		return fmt.Errorf("peer connection must be initialized")
 	}
 
-	answer := webrtc.SessionDescription{Type: webrtc.SDPTypeAnswer, SDP: remoteSDP}
+	var answer webrtc.SessionDescription
+	if err := json.Unmarshal(answerBytes, &answer); err != nil {
+		return fmt.Errorf("failed to unmarshal remote answer: %w", err)
+	}
 
 	if err := pc.SetRemoteDescription(answer); err != nil {
 		return fmt.Errorf("failed to apply remote answer: %w", err)
