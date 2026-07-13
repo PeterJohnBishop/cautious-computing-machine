@@ -75,12 +75,15 @@ func (p *P2pManager) SendEventMessage(eventType string, msgContent string, targe
 		event.Data = rawData[0]
 	}
 
+	p.mu.Lock()
 	err := p.WC.WriteJSON(event)
+	p.mu.Unlock()
+
 	if err != nil {
 		select {
 		case p.ErrorChan <- err:
 		default:
-			p.ErrorChan <- fmt.Errorf("[ERROR] Failed to send error: %v", err)
+			fmt.Printf("[ERROR] Failed to send event %s: %v\n", eventType, err)
 		}
 	}
 }

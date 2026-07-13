@@ -17,11 +17,11 @@ func main() {
 	}
 
 	manager := &p2p.P2pManager{
-		StatusChan:  make(chan string, 10),
-		ErrorChan:   make(chan error, 10),
-		MessageChan: make(chan p2p.EventMessage, 10),
-		DataChan:    make(chan []byte, 100),
-		ID:          tui.GenerateTOTP(), // Initialize ID here
+		StatusChan:  make(chan string, 100),
+		ErrorChan:   make(chan error, 100),
+		MessageChan: make(chan p2p.EventMessage, 100),
+		DataChan:    make(chan []byte, 1024),
+		ID:          tui.GenerateTOTP(),
 	}
 
 	p := tea.NewProgram(tui.InitialModel(manager))
