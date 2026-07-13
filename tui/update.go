@@ -77,27 +77,44 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, cmdStartWebRTC(m.p2p, isInitiator))
 
 	case webrtcStartedMsg:
-		if msg.isInitiator {
-			cmds = append(cmds, cmdSendOffer(m.p2p, m.totpInput.Value()))
-		}
 		cmds = append(
 			cmds,
 			listenForData(m.p2p.DataChan),
 			listenForSignaling(m.p2p.MessageChan),
 		)
 
+		if msg.isInitiator {
+			m.logs = append(m.logs, "[Sender] Waiting for receiver to connect...")
+		} else {
+			m.logs = append(m.logs, "[Receiver] Knocking on sender's door...")
+			target := m.p2p.ActivePeer
+			m.p2p.SendEventMessage("peer_joined", "Hello, I am ready to receive!", &target)
+		}
+
 	case signalingEventMsg:
 		switch msg.eventType {
+		case "peer_joined":
+			if m.role == RoleSender {
+				m.logs = append(m.logs, fmt.Sprintf("[Sender] Receiver %s joined! Sending Offer...", msg.sender))
+				// Lock onto the receiver's unique ID
+				m.p2p.ActivePeer = msg.sender
+				cmds = append(cmds, cmdSendOffer(m.p2p, msg.sender))
+			}
+
 		case "offer":
 			m.logs = append(m.logs, "[Receiver] Offer received. Processing...")
+			m.p2p.ActivePeer = msg.sender
 			cmds = append(cmds, cmdHandleOffer(m.p2p, msg.sender, string(msg.payload)))
+
 		case "answer":
 			m.logs = append(m.logs, "[Sender] Answer received via signaling...")
 			cmds = append(cmds, cmdHandleAnswer(m.p2p, string(msg.payload)))
+
 		case "candidate":
 			cmds = append(cmds, cmdHandleICECandidate(m.p2p, msg.payload))
 		}
 
+		// Loop the listener to catch the next incoming signaling event
 		cmds = append(cmds, listenForSignaling(m.p2p.MessageChan))
 
 	case offerSentMsg:

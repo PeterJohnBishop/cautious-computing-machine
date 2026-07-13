@@ -142,9 +142,8 @@ func (m *Model) updateFocusStates() {
 }
 
 func (m *Model) startConnectionSequence() tea.Cmd {
-	m.p2p.ID = m.totpInput.Value()
-	if m.role == RoleSender {
-		m.p2p.ID = m.totpSecret
+	if m.role == RoleReceiver {
+		m.p2p.ActivePeer = m.totpInput.Value()
 	}
 
 	return tea.Batch(
