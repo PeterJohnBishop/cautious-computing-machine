@@ -7,6 +7,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"time"
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
@@ -161,6 +162,17 @@ func (m *Model) cmdConnectWS() tea.Cmd {
 			return errMsg{err: fmt.Errorf("failed to connect to the signaling server: %w", err)}
 		}
 		go m.p2p.StartListening()
+
+		go func() {
+			ticker := time.NewTicker(30 * time.Second)
+			defer ticker.Stop()
+			for range ticker.C {
+				if err := m.p2p.SendPing(); err != nil {
+					return
+				}
+			}
+		}()
+
 		return wsConnectedMsg{}
 	}
 }

@@ -87,3 +87,14 @@ func (p *P2pManager) SendEventMessage(eventType string, msgContent string, targe
 		}
 	}
 }
+
+func (p *P2pManager) SendPing() error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.WC == nil {
+		return fmt.Errorf("websocket is not connected")
+	}
+
+	return p.WC.WriteMessage(websocket.PingMessage, nil)
+}
