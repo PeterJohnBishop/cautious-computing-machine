@@ -18,14 +18,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch {
 		case key.Matches(msg, keys.Quit):
-			// Clean up partially downloaded files if quitting early
 			if m.fileWriter != nil {
 				m.fileWriter.Close()
 			}
 			return m, tea.Quit
 
 		case key.Matches(msg, keys.Reset):
-			return m.InitialModel(m.p2p), textinput.Blink
+			// FIX 1: Removed the "m." prefix
+			return InitialModel(m.p2p), textinput.Blink
 
 		case key.Matches(msg, keys.Left):
 			if m.focusIndex == FocusToggle {
@@ -80,22 +80,41 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.isInitiator {
 			cmds = append(cmds, cmdSendOffer(m.p2p, m.totpInput.Value()))
 		}
-		// Both sides should start listening for incoming DataChannel messages
-		cmds = append(cmds, listenForData(m.p2p.DataChan))
-		// (Assume you also have a listener for signaling events here)
+		cmds = append(
+			cmds,
+			listenForData(m.p2p.DataChan),
+			listenForSignaling(m.p2p.MessageChan),
+		)
+
+	case signalingEventMsg:
+		switch msg.eventType {
+		case "offer":
+			m.logs = append(m.logs, "[Receiver] Offer received. Processing...")
+			cmds = append(cmds, cmdHandleOffer(m.p2p, msg.sender, string(msg.payload)))
+		case "answer":
+			m.logs = append(m.logs, "[Sender] Answer received via signaling...")
+			cmds = append(cmds, cmdHandleAnswer(m.p2p, string(msg.payload)))
+		case "candidate":
+			cmds = append(cmds, cmdHandleICECandidate(m.p2p, msg.payload))
+		}
+
+		cmds = append(cmds, listenForSignaling(m.p2p.MessageChan))
 
 	case offerSentMsg:
 		m.logs = append(m.logs, "[Sender] Offer sent via signaling. Waiting for Answer...")
-		// Now we wait for signalingEventMsg containing the answer
+
+	case offerHandledMsg:
+		m.logs = append(m.logs, "[Receiver] Offer accepted. Answer sent.")
+		m.logs = append(m.logs, "[Receiver] Waiting for P2P tunnel to open and manifest to arrive...")
 
 	case answerHandledMsg:
-		m.logs = append(m.logs, "[Sender] Answer received. P2P Tunnel open!")
+		m.logs = append(m.logs, "[Sender] Handshake complete. P2P Tunnel open!")
 		m.logs = append(m.logs, "[Sender] Chunking file and sending manifest...")
 		cmds = append(cmds, cmdChunkAndSendManifest(m.p2p, m.pathInput.Value()))
 
 	case manifestSentMsg:
 		m.logs = append(m.logs, "[Sender] Manifest sent. Sending chunks...")
-		m.progressChan = make(chan float64) // Add this to your Model
+		m.progressChan = make(chan float64)
 		cmds = append(
 			cmds,
 			cmdSendChunks(m.p2p, m.pathInput.Value(), m.progressChan),
@@ -104,14 +123,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case chunkProgressMsg:
 		m.logs = append(m.logs, fmt.Sprintf("[Transfer] Sending... %.1f%%", msg.percent))
-		// Keep listening for the next progress update
 		cmds = append(cmds, listenForProgress(m.progressChan))
 
-	// ---------------------------------------------------------
-	// Receiver Logic: Parsing DataChannel Messages
-	// ---------------------------------------------------------
 	case dataReceivedMsg:
-		// 1. Check if we are expecting a manifest (first message received)
 		if !m.manifestReceived {
 			var incomingManifest Manifest
 			err := json.Unmarshal(msg.data, &incomingManifest)
@@ -120,7 +134,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.manifest = incomingManifest
 				m.logs = append(m.logs, fmt.Sprintf("[Receiver] Manifest received: %s (%.2f MB)", m.manifest.Filename, float64(m.manifest.Size)/1024/1024))
 
-				// Prepare the file for writing
 				savePath := filepath.Join(m.pathInput.Value(), m.manifest.Filename)
 				file, err := os.Create(savePath)
 				if err != nil {
@@ -132,7 +145,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.logs = append(m.logs, "[ERROR] Failed to parse file manifest.")
 			}
 		} else {
-			// 2. We already have the manifest, so this must be a raw file chunk
 			if m.fileWriter != nil {
 				_, err := m.fileWriter.Write(msg.data)
 				if err != nil {
@@ -142,8 +154,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.receivedChunks++
 				progress := (float64(m.receivedChunks) / float64(m.manifest.Chunks)) * 100
 
-				// Optional: only log every 10% to prevent TUI log spam
-				if m.receivedChunks%50 == 0 || m.receivedChunks == m.manifest.Chunks {
+				if m.receivedChunks%(m.manifest.Chunks/10+1) == 0 || m.receivedChunks == m.manifest.Chunks {
 					m.logs = append(m.logs, fmt.Sprintf("[Receiver] Receiving... %.1f%%", progress))
 				}
 
@@ -154,7 +165,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
-		// Continue listening for the next message on the DataChannel
+
 		if m.receivedChunks < m.manifest.Chunks {
 			cmds = append(cmds, listenForData(m.p2p.DataChan))
 		}
@@ -167,7 +178,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.logs = append(m.logs, "[System] Connection closed cleanly. Press 'n' to reset or 'q' to quit.")
 	}
 
-	// Update text inputs based on focus
 	switch m.focusIndex {
 	case FocusPath:
 		var cmd tea.Cmd

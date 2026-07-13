@@ -7,7 +7,6 @@ import (
 	"io"
 	"math"
 	"os"
-	"time"
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
@@ -69,7 +68,8 @@ type (
 	transferCompleteMsg struct{}
 	connectionClosedMsg struct{}
 	signalingEventMsg   struct {
-		eventType string // "offer", "answer", etc.
+		eventType string // "offer", "answer", "candidate", etc.
+		sender    string
 		payload   []byte
 	}
 	dataReceivedMsg  struct{ data []byte }
@@ -103,15 +103,20 @@ func listenForErrors(sub chan error) tea.Cmd {
 	}
 }
 
-// listenForSignaling waits for WebRTC handshakes (Offers/Answers) from your WebSocket.
-func listenForSignaling(signalChan chan []byte) tea.Cmd {
+// listenForSignaling now listens directly to your p2p.MessageChan
+func listenForSignaling(msgChan chan p2p.EventMessage) tea.Cmd {
 	return func() tea.Msg {
-		data, ok := <-signalChan
+		msg, ok := <-msgChan
 		if !ok {
 			return nil
 		}
-		// Assuming payload dictates if it's an offer or answer
-		return signalingEventMsg{payload: data}
+
+		// Map the existing EventMessage to our TUI signaling event
+		return signalingEventMsg{
+			eventType: msg.Type,
+			sender:    msg.Sender,
+			payload:   []byte(msg.Data), // json.RawMessage converts nicely to []byte
+		}
 	}
 }
 
@@ -177,19 +182,30 @@ func cmdSendOffer(p *p2p.P2pManager, targetID string) tea.Cmd {
 	}
 }
 
-func cmdHandleOffer() tea.Cmd {
+func cmdHandleOffer(p *p2p.P2pManager, sender, remoteSDP string) tea.Cmd {
 	return func() tea.Msg {
-		// TODO: p.HandleOffer()
-		time.Sleep(1 * time.Second)
+		if err := p.HandleOffer(sender, remoteSDP); err != nil {
+			return errMsg{err: fmt.Errorf("failed to handle offer: %w", err)}
+		}
 		return offerHandledMsg{}
 	}
 }
 
-func cmdHandleAnswer() tea.Cmd {
+func cmdHandleAnswer(p *p2p.P2pManager, remoteSDP string) tea.Cmd {
 	return func() tea.Msg {
-		// TODO: p.HandleAnswer()
-		time.Sleep(1 * time.Second)
+		if err := p.HandleAnswer(remoteSDP); err != nil {
+			return errMsg{err: fmt.Errorf("failed to handle answer: %w", err)}
+		}
 		return answerHandledMsg{}
+	}
+}
+
+func cmdHandleICECandidate(p *p2p.P2pManager, candidateBytes []byte) tea.Cmd {
+	return func() tea.Msg {
+		if err := p.HandleICECandidate(candidateBytes); err != nil {
+			return errMsg{err: fmt.Errorf("failed to handle ICE candidate: %w", err)}
+		}
+		return nil
 	}
 }
 

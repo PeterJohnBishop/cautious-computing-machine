@@ -7,8 +7,6 @@ import (
 	"github.com/pion/webrtc/v4"
 )
 
-// StartWebRTC initializes the WebRTC connection and sets up callbacks.
-// Pass isInitiator=true if this peer is sending the Offer.
 func (p *P2pManager) StartWebRTC(isSender bool) error {
 	// check that we're connected to the signaling server
 	p.mu.RLock()
@@ -19,12 +17,10 @@ func (p *P2pManager) StartWebRTC(isSender bool) error {
 		return fmt.Errorf("connection manager must have an initialized websocket")
 	}
 
-	// configure STUN server connection
 	config := webrtc.Configuration{
 		ICEServers: []webrtc.ICEServer{{URLs: []string{"stun:stun.l.google.com:19302"}}},
 	}
 
-	// create a new peer connection
 	pc, err := webrtc.NewPeerConnection(config)
 	if err != nil {
 		return fmt.Errorf("failed to create peer connection: %w", err)
@@ -34,7 +30,6 @@ func (p *P2pManager) StartWebRTC(isSender bool) error {
 	p.PC = pc
 	p.mu.Unlock()
 	if isSender {
-		// Initiator creates the data channel
 		dc, err := pc.CreateDataChannel("dataTransfer", nil)
 		if err != nil {
 			return fmt.Errorf("failed to create data channel: %w", err)
@@ -54,7 +49,6 @@ func (p *P2pManager) StartWebRTC(isSender bool) error {
 			}
 		})
 	} else {
-		// Answerer listens for the data channel
 		pc.OnDataChannel(func(d *webrtc.DataChannel) {
 			p.mu.Lock()
 			p.DC = d

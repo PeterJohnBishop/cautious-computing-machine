@@ -29,7 +29,12 @@ type Model struct {
 	fileWriter       *os.File
 }
 
-func (m *Model) InitialModel(p *p2p.P2pManager) Model {
+func GenerateTOTP() string {
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	return fmt.Sprintf("%06d", r.Intn(1000000))
+}
+
+func InitialModel(p *p2p.P2pManager) Model {
 	path := textinput.New()
 	path.Placeholder = "file path"
 	path.CharLimit = 150
@@ -39,6 +44,10 @@ func (m *Model) InitialModel(p *p2p.P2pManager) Model {
 	totp.Placeholder = "enter 6-digit TOTP code"
 	totp.CharLimit = 6
 	totp.SetWidth(20)
+
+	if p.ID == "" {
+		p.ID = GenerateTOTP()
+	}
 
 	return Model{
 		p2p:        p,
@@ -50,11 +59,6 @@ func (m *Model) InitialModel(p *p2p.P2pManager) Model {
 		logs:       []string{"[System] Ready to configure connection."},
 		help:       help.New(),
 	}
-}
-
-func (m *Model) GenerateTOTP() string {
-	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-	return fmt.Sprintf("%06d", r.Intn(1000000))
 }
 
 func (m Model) Init() tea.Cmd {
