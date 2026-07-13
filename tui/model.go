@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"math/rand"
+	"os"
 	"time"
 
 	"charm.land/bubbles/v2/help"
@@ -12,7 +13,7 @@ import (
 )
 
 type Model struct {
-	p2p        *p2p.P2pManager // Inject your manager here
+	p2p        *p2p.P2pManager
 	role       int
 	focusIndex int
 	pathInput  textinput.Model
@@ -20,6 +21,12 @@ type Model struct {
 	totpSecret string
 	logs       []string
 	help       help.Model
+
+	progressChan     chan float64
+	manifestReceived bool
+	manifest         Manifest
+	receivedChunks   int
+	fileWriter       *os.File
 }
 
 func (m *Model) InitialModel(p *p2p.P2pManager) Model {

@@ -2,7 +2,11 @@
 package tui
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
+	"math"
+	"os"
 	"time"
 
 	"charm.land/bubbles/v2/key"
@@ -64,7 +68,20 @@ type (
 	chunkSentMsg        struct{ progress string }
 	transferCompleteMsg struct{}
 	connectionClosedMsg struct{}
+	signalingEventMsg   struct {
+		eventType string // "offer", "answer", etc.
+		payload   []byte
+	}
+	dataReceivedMsg  struct{ data []byte }
+	chunkProgressMsg struct{ percent float64 }
+	writeErrorMsg    struct{ err error }
 )
+
+type Manifest struct {
+	Filename string `json:"filename"`
+	Size     int64  `json:"size"`
+	Chunks   int    `json:"chunks"`
+}
 
 func listenForStatus(sub chan string) tea.Cmd {
 	return func() tea.Msg {
@@ -83,6 +100,18 @@ func listenForErrors(sub chan error) tea.Cmd {
 			return nil
 		}
 		return errMsg{err: err}
+	}
+}
+
+// listenForSignaling waits for WebRTC handshakes (Offers/Answers) from your WebSocket.
+func listenForSignaling(signalChan chan []byte) tea.Cmd {
+	return func() tea.Msg {
+		data, ok := <-signalChan
+		if !ok {
+			return nil
+		}
+		// Assuming payload dictates if it's an offer or answer
+		return signalingEventMsg{payload: data}
 	}
 }
 
@@ -107,23 +136,25 @@ func (m *Model) updateFocusStates() {
 }
 
 func (m *Model) startConnectionSequence() tea.Cmd {
-	targetID := m.totpInput.Value()
+	m.p2p.ID = m.totpInput.Value()
 	if m.role == RoleSender {
-		targetID = m.totpSecret
+		m.p2p.ID = m.totpSecret
 	}
 
 	return tea.Batch(
 		func() tea.Msg {
-			return logMsg(fmt.Sprintf("[System] Connecting to signaling server with ID: %s", targetID))
+			return logMsg(fmt.Sprintf("[System] Connecting to signaling server with ID: %s", m.p2p.ID))
 		},
-		cmdConnectWS(targetID),
+		m.cmdConnectWS(),
 	)
 }
 
-func cmdConnectWS(id string) tea.Cmd {
+func (m *Model) cmdConnectWS() tea.Cmd {
 	return func() tea.Msg {
-		// TODO: p.ConnectWS(id)
-		time.Sleep(800 * time.Millisecond) // Placeholder delay
+		err := m.p2p.ConnectToSignallingServer()
+		if err != nil {
+			return errMsg{err: fmt.Errorf("failed to connect to the signaling server: %w", err)}
+		}
 		return wsConnectedMsg{}
 	}
 }
@@ -162,25 +193,97 @@ func cmdHandleAnswer() tea.Cmd {
 	}
 }
 
-func cmdChunkAndSendManifest(filepath string) tea.Cmd {
-	return func() tea.Msg {
-		// TODO: File stat generation, chunking logic, p.SafeWriteBytesToDC()
-		time.Sleep(600 * time.Millisecond)
-		return manifestSentMsg{}
-	}
-}
-
-func cmdSendChunks() tea.Cmd {
-	return func() tea.Msg {
-		// TODO: Loop through file chunks and stream via WebRTC
-		time.Sleep(400 * time.Millisecond)
-		return chunkSentMsg{progress: "100%"} // replace with actual progressive progress updates
-	}
-}
-
 func cmdCloseConnection(p *p2p.P2pManager) tea.Cmd {
 	return func() tea.Msg {
 		p.DisconnectWebRTC()
 		return connectionClosedMsg{}
+	}
+}
+
+func listenForData(dataChan chan []byte) tea.Cmd {
+	return func() tea.Msg {
+		data, ok := <-dataChan
+		if !ok {
+			return connectionClosedMsg{}
+		}
+		return dataReceivedMsg{data: data}
+	}
+}
+
+const chunkSize = 16 * 1024 // 16KB is a standard WebRTC optimal chunk size
+
+func cmdChunkAndSendManifest(p *p2p.P2pManager, path string) tea.Cmd {
+	return func() tea.Msg {
+		info, err := os.Stat(path)
+		if err != nil {
+			return errMsg{err: fmt.Errorf("failed to read file stat: %w", err)}
+		}
+
+		totalChunks := int(math.Ceil(float64(info.Size()) / float64(chunkSize)))
+		manifest := Manifest{
+			Filename: info.Name(),
+			Size:     info.Size(),
+			Chunks:   totalChunks,
+		}
+
+		b, err := json.Marshal(manifest)
+		if err != nil {
+			return errMsg{err: fmt.Errorf("failed to marshal manifest: %w", err)}
+		}
+
+		if err := p.SafeWriteBytesToDC(b); err != nil {
+			return errMsg{err: err}
+		}
+
+		return manifestSentMsg{}
+	}
+}
+
+func cmdSendChunks(p *p2p.P2pManager, path string, progressChan chan float64) tea.Cmd {
+	return func() tea.Msg {
+		file, err := os.Open(path)
+		if err != nil {
+			return errMsg{err: err}
+		}
+		defer file.Close()
+
+		info, _ := file.Stat()
+		buffer := make([]byte, chunkSize)
+		var bytesSent int64
+
+		for {
+			n, err := file.Read(buffer)
+			if err != nil {
+				if err == io.EOF {
+					break
+				}
+				return errMsg{err: err}
+			}
+
+			if err := p.SafeWriteBytesToDC(buffer[:n]); err != nil {
+				return errMsg{err: err}
+			}
+
+			bytesSent += int64(n)
+			progress := (float64(bytesSent) / float64(info.Size())) * 100
+
+			select {
+			case progressChan <- progress:
+			default:
+			}
+		}
+
+		close(progressChan)
+		return transferCompleteMsg{}
+	}
+}
+
+func listenForProgress(progressChan chan float64) tea.Cmd {
+	return func() tea.Msg {
+		p, ok := <-progressChan
+		if !ok {
+			return nil
+		}
+		return chunkProgressMsg{percent: p}
 	}
 }

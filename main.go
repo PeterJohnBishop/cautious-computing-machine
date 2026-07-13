@@ -2,14 +2,20 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/joho/godotenv"
 	"github.com/peterjohnbishop/cautious-computing-machine/p2p"
 	"github.com/peterjohnbishop/cautious-computing-machine/tui"
 )
 
 func main() {
+	if err := godotenv.Load(); err != nil {
+		log.Print("No .env file found")
+	}
+
 	m := tui.Model{}
 
 	// 1. Initialize your p2pManager and its channels
